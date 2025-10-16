@@ -839,28 +839,17 @@ class ReadingListApp {
         const today = new Date();
         const todayString = today.toDateString();
         
-        // Sort reading days to get the most recent streak
-        const sortedDays = this.streakData.readingDays
-            .map(date => new Date(date))
-            .sort((a, b) => b - a);
+        // Convert reading days to a Set for faster lookup
+        const readingDaysSet = new Set(this.streakData.readingDays);
         
         let currentStreak = 0;
         let checkDate = new Date(today);
         
-        // Check if user read today
-        if (this.streakData.readingDays.includes(todayString)) {
-            currentStreak = 1;
+        // Count consecutive days going backwards from today
+        // Continue counting as long as we find reading days
+        while (readingDaysSet.has(checkDate.toDateString())) {
+            currentStreak++;
             checkDate.setDate(checkDate.getDate() - 1);
-        }
-        
-        // Count consecutive days going backwards
-        for (let day of sortedDays) {
-            if (day.toDateString() === checkDate.toDateString()) {
-                currentStreak++;
-                checkDate.setDate(checkDate.getDate() - 1);
-            } else {
-                break;
-            }
         }
         
         this.streakData.currentStreak = currentStreak;

@@ -501,6 +501,9 @@ textarea:focus {
     font-weight: 500;
     transition: all var(--transition-fast);
     position: relative;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
 }
 
 .calendar-day.empty {

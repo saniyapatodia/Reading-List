@@ -106,14 +106,13 @@ class ReadingListApp {
         return Date.now().toString(36) + Math.random().toString(36).substr(2);
     }
 
-    async fetchBookCover(title, author) {
+    async fetchBookInfo(title, author) {
         try {
             // Clean the title and author for better search results
             const cleanTitle = title.replace(/[^\w\s]/gi, '').trim();
             const cleanAuthor = author.replace(/[^\w\s]/gi, '').trim();
             
             // Search for the book using Open Library API
-            const searchQuery = `${cleanTitle}+${cleanAuthor}`;
             const searchUrl = `https://openlibrary.org/search.json?title=${encodeURIComponent(cleanTitle)}&author=${encodeURIComponent(cleanAuthor)}&limit=1`;
             
             const response = await fetch(searchUrl);
@@ -121,23 +120,99 @@ class ReadingListApp {
             
             if (data.docs && data.docs.length > 0) {
                 const book = data.docs[0];
-                const coverId = book.cover_i;
+                console.log('Found book data from Open Library:', book); // Debug log
+                console.log('Pages data:', {
+                    median: book.number_of_pages_median,
+                    array: book.number_of_pages,
+                    first_publish: book.first_publish_year
+                });
+                console.log('Subjects/Genres:', book.subject);
+                const bookInfo = {
+                    coverUrl: null,
+                    author: null,
+                    pages: null,
+                    genre: null
+                };
                 
-                if (coverId) {
-                    // Return the cover URL in different sizes
-                    return {
-                        small: `https://covers.openlibrary.org/b/id/${coverId}-S.jpg`,
-                        medium: `https://covers.openlibrary.org/b/id/${coverId}-M.jpg`,
-                        large: `https://covers.openlibrary.org/b/id/${coverId}-L.jpg`
-                    };
+                // Get cover URL
+                if (book.cover_i) {
+                    bookInfo.coverUrl = `https://covers.openlibrary.org/b/id/${book.cover_i}-L.jpg`;
                 }
+                
+                // Get author (use the found author if no author was provided)
+                if (book.author_name && book.author_name.length > 0) {
+                    bookInfo.author = book.author_name[0];
+                }
+                
+                // Get pages - try multiple possible field names
+                if (book.number_of_pages_median) {
+                    bookInfo.pages = book.number_of_pages_median;
+                    console.log('Found pages (median):', bookInfo.pages);
+                } else if (book.number_of_pages && Array.isArray(book.number_of_pages)) {
+                    bookInfo.pages = book.number_of_pages[0];
+                    console.log('Found pages (array):', bookInfo.pages);
+                } else if (book.number_of_pages) {
+                    bookInfo.pages = book.number_of_pages;
+                    console.log('Found pages (direct):', bookInfo.pages);
+                } else if (book.pages) {
+                    bookInfo.pages = book.pages;
+                    console.log('Found pages (pages field):', bookInfo.pages);
+                }
+                
+                // Get genre/subject
+                if (book.subject && book.subject.length > 0) {
+                    console.log('Processing subjects for genre:', book.subject);
+                    // Try to find a good genre from subjects
+                    const subjects = book.subject;
+                    const genreKeywords = [
+                        'fiction', 'non-fiction', 'biography', 'autobiography', 'memoir',
+                        'science fiction', 'fantasy', 'mystery', 'thriller', 'romance',
+                        'horror', 'drama', 'comedy', 'history', 'philosophy', 'psychology',
+                        'self-help', 'business', 'economics', 'science', 'technology',
+                        'art', 'music', 'cooking', 'travel', 'health', 'fitness',
+                        'education', 'religion', 'politics', 'sociology', 'anthropology'
+                    ];
+                    
+                    for (const subject of subjects) {
+                        const lowerSubject = subject.toLowerCase();
+                        console.log('Checking subject:', subject);
+                        for (const keyword of genreKeywords) {
+                            if (lowerSubject.includes(keyword)) {
+                                bookInfo.genre = keyword.charAt(0).toUpperCase() + keyword.slice(1);
+                                console.log('Found matching genre:', bookInfo.genre);
+                                break;
+                            }
+                        }
+                        if (bookInfo.genre) break;
+                    }
+                    
+                    // If no specific genre found, use the first subject
+                    if (!bookInfo.genre && subjects[0]) {
+                        bookInfo.genre = subjects[0];
+                        console.log('Using first subject as genre:', bookInfo.genre);
+                    }
+                } else {
+                    console.log('No subjects found in book data');
+                }
+                
+                return bookInfo;
             }
             
             return null;
         } catch (error) {
-            console.log('Could not fetch book cover:', error);
+            console.log('Could not fetch book info:', error);
             return null;
         }
+    }
+
+    // Keep the old function name for backward compatibility
+    async fetchBookCover(title, author) {
+        const info = await this.fetchBookInfo(title, author);
+        return info ? {
+            small: info.coverUrl?.replace('-L.jpg', '-S.jpg'),
+            medium: info.coverUrl?.replace('-L.jpg', '-M.jpg'),
+            large: info.coverUrl
+        } : null;
     }
 
     createBook(data) {
@@ -146,7 +221,7 @@ class ReadingListApp {
             title: data.title.trim(),
             author: data.author.trim(),
             genre: data.genre || '',
-            pages: parseInt(data.pages) || 0,
+            pages: data.pages ? parseInt(data.pages) : null,
             status: data.status || 'to-read',
             priority: data.priority || 'medium',
             notes: data.notes || '',
@@ -187,17 +262,36 @@ class ReadingListApp {
     async addBook(bookData) {
         const book = this.createBook(bookData);
         
-        // Try to fetch book cover automatically
-        if (!book.coverUrl) {
+        // Try to fetch book info automatically if any field is missing
+        if (!book.coverUrl || book.pages === null || !book.genre) {
             try {
-                this.showNotification('Searching for book cover...', 'info');
-                const coverUrls = await this.fetchBookCover(book.title, book.author);
-                if (coverUrls) {
-                    book.coverUrl = coverUrls.medium; // Use medium size for display
-                    book.coverUrls = coverUrls; // Store all sizes for future use
+                this.showNotification('Searching for book information...', 'info');
+                const bookInfo = await this.fetchBookInfo(book.title, book.author);
+                console.log('Fetched book info:', bookInfo); // Debug log
+                if (bookInfo) {
+                    let updatedFields = [];
+                    // Only update fields that are empty or missing
+                    if (!book.coverUrl && bookInfo.coverUrl) {
+                        book.coverUrl = bookInfo.coverUrl;
+                        updatedFields.push('cover');
+                    }
+                    if (book.pages === null && bookInfo.pages) {
+                        book.pages = bookInfo.pages;
+                        updatedFields.push('pages');
+                    }
+                    if (!book.genre && bookInfo.genre) {
+                        book.genre = bookInfo.genre;
+                        updatedFields.push('genre');
+                    }
+                    if (updatedFields.length > 0) {
+                        this.showNotification(`Found: ${updatedFields.join(', ')}`, 'success');
+                    }
+                } else {
+                    this.showNotification('No additional information found online', 'warning');
                 }
             } catch (error) {
-                console.log('Could not fetch cover:', error);
+                console.log('Could not fetch book info:', error);
+                this.showNotification('Could not fetch book information', 'error');
             }
         }
         
@@ -214,18 +308,27 @@ class ReadingListApp {
         if (index !== -1) {
             this.books[index] = { ...this.books[index], ...bookData };
             
-            // Try to fetch cover if title/author changed and no cover exists
-            if (!this.books[index].coverUrl && (bookData.title || bookData.author)) {
+            // Try to fetch book info if title/author changed and any field is missing
+            if ((bookData.title || bookData.author) && 
+                (!this.books[index].coverUrl || this.books[index].pages === null || !this.books[index].genre)) {
                 try {
                     const title = this.books[index].title;
                     const author = this.books[index].author;
-                    const coverUrls = await this.fetchBookCover(title, author);
-                    if (coverUrls) {
-                        this.books[index].coverUrl = coverUrls.medium;
-                        this.books[index].coverUrls = coverUrls;
+                    const bookInfo = await this.fetchBookInfo(title, author);
+                    if (bookInfo) {
+                        // Only update fields that are empty or missing
+                        if (!this.books[index].coverUrl && bookInfo.coverUrl) {
+                            this.books[index].coverUrl = bookInfo.coverUrl;
+                        }
+                        if (this.books[index].pages === null && bookInfo.pages) {
+                            this.books[index].pages = bookInfo.pages;
+                        }
+                        if (!this.books[index].genre && bookInfo.genre) {
+                            this.books[index].genre = bookInfo.genre;
+                        }
                     }
                 } catch (error) {
-                    console.log('Could not fetch cover:', error);
+                    console.log('Could not fetch book info:', error);
                 }
             }
             
@@ -661,8 +764,8 @@ class ReadingListApp {
         const findBtn = document.getElementById('findCoverBtn');
         const coverInput = document.getElementById('bookCoverUrl');
         
-        if (!title || !author) {
-            this.showNotification('Please enter title and author first.', 'error');
+        if (!title) {
+            this.showNotification('Please enter a book title first.', 'error');
             return;
         }
         
@@ -671,15 +774,47 @@ class ReadingListApp {
         findBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Searching...';
         
         try {
-            const coverUrls = await this.fetchBookCover(title, author);
-            if (coverUrls) {
-                coverInput.value = coverUrls.medium;
-                this.showNotification('Cover found!', 'success');
+            const bookInfo = await this.fetchBookInfo(title, author);
+            if (bookInfo) {
+                let updatedFields = [];
+                
+                // Update cover
+                if (bookInfo.coverUrl) {
+                    coverInput.value = bookInfo.coverUrl;
+                    updatedFields.push('cover');
+                }
+                
+                // Update author if empty
+                const authorInput = document.getElementById('bookAuthor');
+                if (!authorInput.value.trim() && bookInfo.author) {
+                    authorInput.value = bookInfo.author;
+                    updatedFields.push('author');
+                }
+                
+                // Update pages if empty
+                const pagesInput = document.getElementById('bookPages');
+                if (!pagesInput.value.trim() && bookInfo.pages) {
+                    pagesInput.value = bookInfo.pages;
+                    updatedFields.push('pages');
+                }
+                
+                // Update genre if empty
+                const genreInput = document.getElementById('bookGenre');
+                if (!genreInput.value.trim() && bookInfo.genre) {
+                    genreInput.value = bookInfo.genre;
+                    updatedFields.push('genre');
+                }
+                
+                if (updatedFields.length > 0) {
+                    this.showNotification(`Found book info: ${updatedFields.join(', ')}!`, 'success');
+                } else {
+                    this.showNotification('No additional information found.', 'warning');
+                }
             } else {
-                this.showNotification('No cover found for this book.', 'warning');
+                this.showNotification('No information found for this book.', 'warning');
             }
         } catch (error) {
-            this.showNotification('Error searching for cover.', 'error');
+            this.showNotification('Error searching for book information.', 'error');
         } finally {
             // Re-enable button
             findBtn.disabled = false;

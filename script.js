@@ -112,6 +112,8 @@ class ReadingListApp {
             const cleanTitle = title.replace(/[^\w\s]/gi, '').trim();
             const cleanAuthor = author.replace(/[^\w\s]/gi, '').trim();
             
+            console.log('Starting book info search for:', cleanTitle, 'by', cleanAuthor);
+            
             // Try multiple search approaches to find the best match
             const searchQueries = [
                 `title=${encodeURIComponent(cleanTitle)}&author=${encodeURIComponent(cleanAuthor)}&limit=3`,
@@ -290,15 +292,140 @@ class ReadingListApp {
                     }
                 }
                 
-                console.log('Final book info:', bookInfo);
+                console.log('Final book info from Open Library:', bookInfo);
+                
+                // If we're missing critical info, try backup APIs
+                if (!bookInfo.pages || !bookInfo.genre) {
+                    console.log('Missing info, trying backup APIs...');
+                    const backupInfo = await this.fetchFromBackupAPIs(cleanTitle, cleanAuthor, bookInfo);
+                    if (backupInfo) {
+                        // Merge backup info with existing info
+                        if (!bookInfo.pages && backupInfo.pages) bookInfo.pages = backupInfo.pages;
+                        if (!bookInfo.genre && backupInfo.genre) bookInfo.genre = backupInfo.genre;
+                        if (!bookInfo.coverUrl && backupInfo.coverUrl) bookInfo.coverUrl = backupInfo.coverUrl;
+                        console.log('Enhanced with backup API data:', bookInfo);
+                    }
+                }
+                
                 return bookInfo;
             }
             
-            return null;
+            // If Open Library fails completely, try backup APIs
+            console.log('Open Library failed, trying backup APIs...');
+            return await this.fetchFromBackupAPIs(cleanTitle, cleanAuthor, null);
         } catch (error) {
             console.log('Could not fetch book info:', error);
             return null;
         }
+    }
+
+    async fetchFromBackupAPIs(title, author, existingInfo = null) {
+        const bookInfo = existingInfo || {
+            coverUrl: null,
+            author: null,
+            pages: null,
+            genre: null
+        };
+
+        // Try Google Books API as backup
+        try {
+            console.log('Trying Google Books API...');
+            const googleInfo = await this.fetchFromGoogleBooks(title, author);
+            if (googleInfo) {
+                if (!bookInfo.pages && googleInfo.pages) bookInfo.pages = googleInfo.pages;
+                if (!bookInfo.genre && googleInfo.genre) bookInfo.genre = googleInfo.genre;
+                if (!bookInfo.coverUrl && googleInfo.coverUrl) bookInfo.coverUrl = googleInfo.coverUrl;
+                console.log('Google Books provided:', googleInfo);
+            }
+        } catch (error) {
+            console.log('Google Books API failed:', error);
+        }
+
+        // Try ISBN API as backup for page count
+        if (!bookInfo.pages) {
+            try {
+                console.log('Trying ISBN API for page count...');
+                const isbnInfo = await this.fetchFromISBNAPI(title, author);
+                if (isbnInfo && isbnInfo.pages) {
+                    bookInfo.pages = isbnInfo.pages;
+                    console.log('ISBN API provided pages:', isbnInfo.pages);
+                }
+            } catch (error) {
+                console.log('ISBN API failed:', error);
+            }
+        }
+
+        return bookInfo;
+    }
+
+    async fetchFromGoogleBooks(title, author) {
+        try {
+            const query = `${title}+inauthor:${author}`;
+            const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=1`;
+            
+            const response = await fetch(url);
+            const data = await response.json();
+            
+            if (data.items && data.items.length > 0) {
+                const book = data.items[0].volumeInfo;
+                const result = {};
+                
+                // Get page count
+                if (book.pageCount) {
+                    result.pages = book.pageCount;
+                }
+                
+                // Get genre/categories
+                if (book.categories && book.categories.length > 0) {
+                    const categories = book.categories;
+                    const genreKeywords = [
+                        'fiction', 'non-fiction', 'biography', 'autobiography', 'memoir',
+                        'science fiction', 'fantasy', 'mystery', 'thriller', 'romance',
+                        'horror', 'drama', 'comedy', 'history', 'philosophy', 'psychology',
+                        'self-help', 'business', 'economics', 'science', 'technology',
+                        'art', 'music', 'cooking', 'travel', 'health', 'fitness',
+                        'education', 'religion', 'politics', 'sociology', 'anthropology'
+                    ];
+                    
+                    for (const category of categories) {
+                        const lowerCategory = category.toLowerCase();
+                        for (const keyword of genreKeywords) {
+                            if (lowerCategory.includes(keyword)) {
+                                result.genre = keyword.charAt(0).toUpperCase() + keyword.slice(1);
+                                break;
+                            }
+                        }
+                        if (result.genre) break;
+                    }
+                    
+                    if (!result.genre && categories[0]) {
+                        result.genre = categories[0];
+                    }
+                }
+                
+                // Get cover
+                if (book.imageLinks && book.imageLinks.thumbnail) {
+                    result.coverUrl = book.imageLinks.thumbnail.replace('http:', 'https:').replace('&edge=curl', '');
+                }
+                
+                return result;
+            }
+        } catch (error) {
+            console.log('Google Books API error:', error);
+        }
+        return null;
+    }
+
+    async fetchFromISBNAPI(title, author) {
+        try {
+            // This is a placeholder for ISBN API integration
+            // You could integrate with APIs like OpenLibrary ISBN API or others
+            // For now, we'll return null to indicate no additional data
+            return null;
+        } catch (error) {
+            console.log('ISBN API error:', error);
+        }
+        return null;
     }
 
     // Keep the old function name for backward compatibility

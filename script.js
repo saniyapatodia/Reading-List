@@ -7,6 +7,7 @@ class ReadingListApp {
         this.currentTheme = 'vibrant';
         this.editingBookId = null;
         this.currentProgressBookId = null;
+        this.streakData = this.loadStreakData();
         
         this.init();
     }
@@ -15,6 +16,8 @@ class ReadingListApp {
         this.bindEvents();
         this.render();
         this.updateStats();
+        this.updateStreak();
+        this.renderStreakCalendar();
     }
 
     bindEvents() {
@@ -126,6 +129,23 @@ class ReadingListApp {
         localStorage.setItem('readingListBooks', JSON.stringify(this.books));
     }
 
+    loadStreakData() {
+        const saved = localStorage.getItem('readingListStreak');
+        if (saved) {
+            return JSON.parse(saved);
+        }
+        return {
+            currentStreak: 0,
+            longestStreak: 0,
+            readingDays: [], // Array of dates when user read
+            lastReadingDate: null
+        };
+    }
+
+    saveStreakData() {
+        localStorage.setItem('readingListStreak', JSON.stringify(this.streakData));
+    }
+
     addBook(bookData) {
         const book = this.createBook(bookData);
         this.books.unshift(book);
@@ -161,6 +181,7 @@ class ReadingListApp {
     updateProgress(id, progressData) {
         const book = this.books.find(book => book.id === id);
         if (book) {
+            const oldPage = book.currentPage;
             book.currentPage = parseInt(progressData.currentPage);
             book.progressNotes = progressData.progressNotes || '';
             
@@ -172,9 +193,16 @@ class ReadingListApp {
                 book.status = 'reading';
             }
             
+            // Track reading activity for streaks
+            if (book.currentPage > oldPage) {
+                this.recordReadingActivity();
+            }
+            
             this.saveBooks();
             this.render();
             this.updateStats();
+            this.updateStreak();
+            this.renderStreakCalendar();
             this.hideProgressModal();
             this.showNotification('Progress updated successfully!', 'success');
         }
@@ -336,6 +364,117 @@ class ReadingListApp {
         document.getElementById('totalBooks').textContent = totalBooks;
         document.getElementById('inProgressBooks').textContent = inProgressBooks;
         document.getElementById('completedBooks').textContent = completedBooks;
+        document.getElementById('currentStreak').textContent = this.streakData.currentStreak;
+    }
+
+    recordReadingActivity() {
+        const today = new Date().toDateString();
+        
+        // Don't record if already recorded today
+        if (this.streakData.readingDays.includes(today)) {
+            return;
+        }
+        
+        this.streakData.readingDays.push(today);
+        this.streakData.lastReadingDate = today;
+        this.updateStreak();
+        this.saveStreakData();
+    }
+
+    updateStreak() {
+        const today = new Date();
+        const todayString = today.toDateString();
+        
+        // Sort reading days to get the most recent streak
+        const sortedDays = this.streakData.readingDays
+            .map(date => new Date(date))
+            .sort((a, b) => b - a);
+        
+        let currentStreak = 0;
+        let checkDate = new Date(today);
+        
+        // Check if user read today
+        if (this.streakData.readingDays.includes(todayString)) {
+            currentStreak = 1;
+            checkDate.setDate(checkDate.getDate() - 1);
+        }
+        
+        // Count consecutive days going backwards
+        for (let day of sortedDays) {
+            if (day.toDateString() === checkDate.toDateString()) {
+                currentStreak++;
+                checkDate.setDate(checkDate.getDate() - 1);
+            } else {
+                break;
+            }
+        }
+        
+        this.streakData.currentStreak = currentStreak;
+        this.streakData.longestStreak = Math.max(this.streakData.longestStreak, currentStreak);
+        
+        // Update UI
+        document.getElementById('currentStreak').textContent = currentStreak;
+        document.getElementById('streakDays').textContent = currentStreak;
+        document.getElementById('longestStreak').textContent = this.streakData.longestStreak;
+        
+        this.updateStreakMotivation();
+    }
+
+    updateStreakMotivation() {
+        const motivation = document.getElementById('streakMotivation');
+        const streak = this.streakData.currentStreak;
+        
+        let message = '';
+        let className = '';
+        
+        if (streak === 0) {
+            message = 'Start your reading journey today! 📚';
+            className = '';
+        } else if (streak === 1) {
+            message = 'Great start! Keep the momentum going! 🔥';
+            className = 'encouraging';
+        } else if (streak < 7) {
+            message = `${streak} days strong! You\'re building a great habit! 💪`;
+            className = 'encouraging';
+        } else if (streak < 30) {
+            message = `Amazing ${streak}-day streak! You\'re on fire! 🔥🔥`;
+            className = 'encouraging';
+        } else {
+            message = `Incredible ${streak}-day streak! You\'re a reading champion! 🏆`;
+            className = 'encouraging';
+        }
+        
+        motivation.innerHTML = `<p>${message}</p>`;
+        motivation.className = `streak-motivation ${className}`;
+    }
+
+    renderStreakCalendar() {
+        const calendar = document.getElementById('streakCalendar');
+        const today = new Date();
+        
+        // Get the last 35 days (5 weeks)
+        const days = [];
+        for (let i = 34; i >= 0; i--) {
+            const date = new Date(today);
+            date.setDate(date.getDate() - i);
+            days.push(date);
+        }
+        
+        calendar.innerHTML = days.map(date => {
+            const dateString = date.toDateString();
+            const isToday = dateString === today.toDateString();
+            const hasRead = this.streakData.readingDays.includes(dateString);
+            
+            let className = 'calendar-day';
+            if (hasRead) className += ' read';
+            if (isToday) className += ' today';
+            
+            return `
+                <div class="${className}" title="${date.toLocaleDateString()}">
+                    ${date.getDate()}
+                </div>
+            `;
+        }).join('');
     }
 
     showAddBookModal() {

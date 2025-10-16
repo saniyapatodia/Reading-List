@@ -112,21 +112,59 @@ class ReadingListApp {
             const cleanTitle = title.replace(/[^\w\s]/gi, '').trim();
             const cleanAuthor = author.replace(/[^\w\s]/gi, '').trim();
             
-            // Search for the book using Open Library API
-            const searchUrl = `https://openlibrary.org/search.json?title=${encodeURIComponent(cleanTitle)}&author=${encodeURIComponent(cleanAuthor)}&limit=1`;
+            // Try multiple search approaches to find the best match
+            const searchQueries = [
+                `title=${encodeURIComponent(cleanTitle)}&author=${encodeURIComponent(cleanAuthor)}&limit=3`,
+                `q=${encodeURIComponent(cleanTitle + ' ' + cleanAuthor)}&limit=3`,
+                `title=${encodeURIComponent(cleanTitle)}&limit=3`
+            ];
             
-            const response = await fetch(searchUrl);
-            const data = await response.json();
+            let bestBook = null;
             
-            if (data.docs && data.docs.length > 0) {
-                const book = data.docs[0];
-                console.log('Found book data from Open Library:', book); // Debug log
-                console.log('Pages data:', {
-                    median: book.number_of_pages_median,
-                    array: book.number_of_pages,
-                    first_publish: book.first_publish_year
-                });
-                console.log('Subjects/Genres:', book.subject);
+            for (const query of searchQueries) {
+                const searchUrl = `https://openlibrary.org/search.json?${query}`;
+                console.log('Trying search:', searchUrl);
+                
+                const response = await fetch(searchUrl);
+                const data = await response.json();
+                
+                if (data.docs && data.docs.length > 0) {
+                    // Look for the best match (prefer original works over graphic novels, adaptations, etc.)
+                    for (const book of data.docs) {
+                        const titleLower = book.title.toLowerCase();
+                        const searchTitleLower = cleanTitle.toLowerCase();
+                        
+                        // Skip if it's clearly not the right book
+                        if (titleLower.includes('graphic novel') || 
+                            titleLower.includes('study guide') || 
+                            titleLower.includes('notes') ||
+                            titleLower.includes('summary')) {
+                            continue;
+                        }
+                        
+                        // Prefer exact title matches or close matches
+                        if (titleLower === searchTitleLower || 
+                            titleLower.includes(searchTitleLower) ||
+                            searchTitleLower.includes(titleLower)) {
+                            bestBook = book;
+                            console.log('Found good match:', book.title);
+                            break;
+                        }
+                        
+                        // If no exact match found yet, take the first reasonable match
+                        if (!bestBook) {
+                            bestBook = book;
+                        }
+                    }
+                    
+                    if (bestBook) break;
+                }
+            }
+            
+            if (bestBook) {
+                const book = bestBook;
+                console.log('Using book:', book);
+                
                 const bookInfo = {
                     coverUrl: null,
                     author: null,
@@ -144,57 +182,115 @@ class ReadingListApp {
                     bookInfo.author = book.author_name[0];
                 }
                 
-                // Get pages - try multiple possible field names
-                if (book.number_of_pages_median) {
-                    bookInfo.pages = book.number_of_pages_median;
-                    console.log('Found pages (median):', bookInfo.pages);
-                } else if (book.number_of_pages && Array.isArray(book.number_of_pages)) {
-                    bookInfo.pages = book.number_of_pages[0];
-                    console.log('Found pages (array):', bookInfo.pages);
-                } else if (book.number_of_pages) {
-                    bookInfo.pages = book.number_of_pages;
-                    console.log('Found pages (direct):', bookInfo.pages);
-                } else if (book.pages) {
-                    bookInfo.pages = book.pages;
-                    console.log('Found pages (pages field):', bookInfo.pages);
-                }
-                
-                // Get genre/subject
-                if (book.subject && book.subject.length > 0) {
-                    console.log('Processing subjects for genre:', book.subject);
-                    // Try to find a good genre from subjects
-                    const subjects = book.subject;
-                    const genreKeywords = [
-                        'fiction', 'non-fiction', 'biography', 'autobiography', 'memoir',
-                        'science fiction', 'fantasy', 'mystery', 'thriller', 'romance',
-                        'horror', 'drama', 'comedy', 'history', 'philosophy', 'psychology',
-                        'self-help', 'business', 'economics', 'science', 'technology',
-                        'art', 'music', 'cooking', 'travel', 'health', 'fitness',
-                        'education', 'religion', 'politics', 'sociology', 'anthropology'
-                    ];
-                    
-                    for (const subject of subjects) {
-                        const lowerSubject = subject.toLowerCase();
-                        console.log('Checking subject:', subject);
-                        for (const keyword of genreKeywords) {
-                            if (lowerSubject.includes(keyword)) {
-                                bookInfo.genre = keyword.charAt(0).toUpperCase() + keyword.slice(1);
-                                console.log('Found matching genre:', bookInfo.genre);
-                                break;
+                // Get detailed work information and editions
+                if (book.key) {
+                    try {
+                        // First get work details
+                        const workUrl = `https://openlibrary.org${book.key}.json`;
+                        console.log('Fetching work details from:', workUrl);
+                        const workResponse = await fetch(workUrl);
+                        const workData = await workResponse.json();
+                        console.log('Work details:', workData);
+                        
+                        // Then get editions
+                        const editionsUrl = `https://openlibrary.org${book.key}/editions.json`;
+                        console.log('Fetching editions from:', editionsUrl);
+                        const editionsResponse = await fetch(editionsUrl);
+                        const editionsData = await editionsResponse.json();
+                        console.log('Editions data:', editionsData);
+                        
+                        // Get pages from work data - try multiple approaches
+                        console.log('Looking for page data in:', {
+                            description: workData.description,
+                            pages: workData.pages,
+                            number_of_pages: workData.number_of_pages,
+                            pagination: workData.pagination
+                        });
+                        
+                        // Try direct page field first
+                        if (workData.pages && typeof workData.pages === 'number') {
+                            bookInfo.pages = workData.pages;
+                            console.log('Found pages (direct):', bookInfo.pages);
+                        } else if (workData.number_of_pages && typeof workData.number_of_pages === 'number') {
+                            bookInfo.pages = workData.number_of_pages;
+                            console.log('Found pages (number_of_pages):', bookInfo.pages);
+                        } else if (workData.pagination && workData.pagination.length) {
+                            bookInfo.pages = workData.pagination.length;
+                            console.log('Found pages (pagination):', bookInfo.pages);
+                        } else if (workData.description) {
+                            // Try to extract pages from description
+                            const pagesMatch = workData.description.match(/(\d+)\s*pages?/i);
+                            if (pagesMatch) {
+                                bookInfo.pages = parseInt(pagesMatch[1]);
+                                console.log('Found pages in description:', bookInfo.pages);
                             }
                         }
-                        if (bookInfo.genre) break;
+                        
+                        // Get pages from editions data
+                        if (!bookInfo.pages && editionsData.entries && editionsData.entries.length > 0) {
+                            console.log('Checking editions for page data');
+                            // Look for English editions first, then any edition with page data
+                            let englishEdition = null;
+                            let anyEditionWithPages = null;
+                            
+                            for (const edition of editionsData.entries) {
+                                if (edition.number_of_pages) {
+                                    // Check if it's English
+                                    if (edition.languages && edition.languages.some(lang => lang.key === '/languages/eng')) {
+                                        englishEdition = edition;
+                                        break;
+                                    } else if (!anyEditionWithPages) {
+                                        anyEditionWithPages = edition;
+                                    }
+                                }
+                            }
+                            
+                            // Use English edition if available, otherwise use any edition with pages
+                            const selectedEdition = englishEdition || anyEditionWithPages;
+                            if (selectedEdition) {
+                                bookInfo.pages = selectedEdition.number_of_pages;
+                                console.log('Found pages in edition:', bookInfo.pages, 'from edition:', selectedEdition.title);
+                            }
+                        }
+                        
+                        // Get subjects from work data
+                        if (workData.subjects && workData.subjects.length > 0) {
+                            console.log('Processing work subjects:', workData.subjects);
+                            const subjects = workData.subjects;
+                            const genreKeywords = [
+                                'fiction', 'non-fiction', 'biography', 'autobiography', 'memoir',
+                                'science fiction', 'fantasy', 'mystery', 'thriller', 'romance',
+                                'horror', 'drama', 'comedy', 'history', 'philosophy', 'psychology',
+                                'self-help', 'business', 'economics', 'science', 'technology',
+                                'art', 'music', 'cooking', 'travel', 'health', 'fitness',
+                                'education', 'religion', 'politics', 'sociology', 'anthropology'
+                            ];
+                            
+                            for (const subject of subjects) {
+                                const lowerSubject = subject.toLowerCase();
+                                console.log('Checking subject:', subject);
+                                for (const keyword of genreKeywords) {
+                                    if (lowerSubject.includes(keyword)) {
+                                        bookInfo.genre = keyword.charAt(0).toUpperCase() + keyword.slice(1);
+                                        console.log('Found matching genre:', bookInfo.genre);
+                                        break;
+                                    }
+                                }
+                                if (bookInfo.genre) break;
+                            }
+                            
+                            // If no specific genre found, use the first subject
+                            if (!bookInfo.genre && subjects[0]) {
+                                bookInfo.genre = subjects[0];
+                                console.log('Using first subject as genre:', bookInfo.genre);
+                            }
+                        }
+                    } catch (workError) {
+                        console.log('Could not fetch work details:', workError);
                     }
-                    
-                    // If no specific genre found, use the first subject
-                    if (!bookInfo.genre && subjects[0]) {
-                        bookInfo.genre = subjects[0];
-                        console.log('Using first subject as genre:', bookInfo.genre);
-                    }
-                } else {
-                    console.log('No subjects found in book data');
                 }
                 
+                console.log('Final book info:', bookInfo);
                 return bookInfo;
             }
             

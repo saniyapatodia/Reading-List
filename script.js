@@ -43,10 +43,14 @@ class ReadingListApp {
         document.getElementById('bookForm').addEventListener('submit', (e) => this.handleBookSubmit(e));
         document.getElementById('progressForm').addEventListener('submit', (e) => this.handleProgressSubmit(e));
 
+        // Find cover button
+        document.getElementById('findCoverBtn').addEventListener('click', () => this.findCoverForCurrentBook());
+
         // Filter and sort
         document.getElementById('statusFilter').addEventListener('change', () => this.render());
         document.getElementById('pageFilter').addEventListener('change', () => this.render());
         document.getElementById('sortBy').addEventListener('change', () => this.render());
+        document.getElementById('bookSearch').addEventListener('input', () => this.render());
 
         // View controls
         document.getElementById('gridViewBtn').addEventListener('click', () => this.setView('grid'));
@@ -102,6 +106,40 @@ class ReadingListApp {
         return Date.now().toString(36) + Math.random().toString(36).substr(2);
     }
 
+    async fetchBookCover(title, author) {
+        try {
+            // Clean the title and author for better search results
+            const cleanTitle = title.replace(/[^\w\s]/gi, '').trim();
+            const cleanAuthor = author.replace(/[^\w\s]/gi, '').trim();
+            
+            // Search for the book using Open Library API
+            const searchQuery = `${cleanTitle}+${cleanAuthor}`;
+            const searchUrl = `https://openlibrary.org/search.json?title=${encodeURIComponent(cleanTitle)}&author=${encodeURIComponent(cleanAuthor)}&limit=1`;
+            
+            const response = await fetch(searchUrl);
+            const data = await response.json();
+            
+            if (data.docs && data.docs.length > 0) {
+                const book = data.docs[0];
+                const coverId = book.cover_i;
+                
+                if (coverId) {
+                    // Return the cover URL in different sizes
+                    return {
+                        small: `https://covers.openlibrary.org/b/id/${coverId}-S.jpg`,
+                        medium: `https://covers.openlibrary.org/b/id/${coverId}-M.jpg`,
+                        large: `https://covers.openlibrary.org/b/id/${coverId}-L.jpg`
+                    };
+                }
+            }
+            
+            return null;
+        } catch (error) {
+            console.log('Could not fetch book cover:', error);
+            return null;
+        }
+    }
+
     createBook(data) {
         return {
             id: this.generateId(),
@@ -146,8 +184,23 @@ class ReadingListApp {
         localStorage.setItem('readingListStreak', JSON.stringify(this.streakData));
     }
 
-    addBook(bookData) {
+    async addBook(bookData) {
         const book = this.createBook(bookData);
+        
+        // Try to fetch book cover automatically
+        if (!book.coverUrl) {
+            try {
+                this.showNotification('Searching for book cover...', 'info');
+                const coverUrls = await this.fetchBookCover(book.title, book.author);
+                if (coverUrls) {
+                    book.coverUrl = coverUrls.medium; // Use medium size for display
+                    book.coverUrls = coverUrls; // Store all sizes for future use
+                }
+            } catch (error) {
+                console.log('Could not fetch cover:', error);
+            }
+        }
+        
         this.books.unshift(book);
         this.saveBooks();
         this.render();
@@ -156,10 +209,26 @@ class ReadingListApp {
         this.showNotification('Book added successfully!', 'success');
     }
 
-    updateBook(id, bookData) {
+    async updateBook(id, bookData) {
         const index = this.books.findIndex(book => book.id === id);
         if (index !== -1) {
             this.books[index] = { ...this.books[index], ...bookData };
+            
+            // Try to fetch cover if title/author changed and no cover exists
+            if (!this.books[index].coverUrl && (bookData.title || bookData.author)) {
+                try {
+                    const title = this.books[index].title;
+                    const author = this.books[index].author;
+                    const coverUrls = await this.fetchBookCover(title, author);
+                    if (coverUrls) {
+                        this.books[index].coverUrl = coverUrls.medium;
+                        this.books[index].coverUrls = coverUrls;
+                    }
+                } catch (error) {
+                    console.log('Could not fetch cover:', error);
+                }
+            }
+            
             this.saveBooks();
             this.render();
             this.updateStats();
@@ -210,6 +279,17 @@ class ReadingListApp {
 
     getFilteredAndSortedBooks() {
         let filtered = [...this.books];
+        
+        // Filter by search query
+        const searchQuery = document.getElementById('bookSearch').value.toLowerCase().trim();
+        if (searchQuery) {
+            filtered = filtered.filter(book => 
+                book.title.toLowerCase().includes(searchQuery) ||
+                book.author.toLowerCase().includes(searchQuery) ||
+                (book.genre && book.genre.toLowerCase().includes(searchQuery)) ||
+                (book.notes && book.notes.toLowerCase().includes(searchQuery))
+            );
+        }
         
         // Filter by status
         const statusFilter = document.getElementById('statusFilter').value;
@@ -379,6 +459,54 @@ class ReadingListApp {
         this.streakData.lastReadingDate = today;
         this.updateStreak();
         this.saveStreakData();
+        
+        // Trigger confetti celebration!
+        this.showConfetti();
+        this.showNotification('🎉 Great job reading today! Keep up the streak! 🔥', 'success');
+    }
+
+    showConfetti() {
+        // Create confetti container
+        const confettiContainer = document.createElement('div');
+        confettiContainer.className = 'confetti-container';
+        document.body.appendChild(confettiContainer);
+        
+        // Create confetti pieces
+        const colors = ['var(--primary-color)', 'var(--secondary-color)', 'var(--accent-color)', 'var(--warning-color)', 'var(--success-color)', 'var(--info-color)'];
+        const pieceCount = 50;
+        
+        for (let i = 0; i < pieceCount; i++) {
+            const piece = document.createElement('div');
+            piece.className = 'confetti-piece';
+            
+            // Random position across the screen width
+            piece.style.left = Math.random() * 100 + '%';
+            
+            // Random animation duration (2-4 seconds)
+            const duration = 2 + Math.random() * 2;
+            piece.style.animationDuration = duration + 's';
+            
+            // Random delay (0-1 second)
+            const delay = Math.random() * 1;
+            piece.style.animationDelay = delay + 's';
+            
+            // Random size variation
+            const size = 8 + Math.random() * 8;
+            piece.style.width = size + 'px';
+            piece.style.height = size + 'px';
+            
+            // Random shape (circle or square)
+            if (Math.random() > 0.5) {
+                piece.style.borderRadius = '50%';
+            }
+            
+            confettiContainer.appendChild(piece);
+        }
+        
+        // Remove confetti after animation completes
+        setTimeout(() => {
+            document.body.removeChild(confettiContainer);
+        }, 5000);
     }
 
     updateStreak() {
@@ -527,7 +655,39 @@ class ReadingListApp {
         this.currentProgressBookId = null;
     }
 
-    handleBookSubmit(e) {
+    async findCoverForCurrentBook() {
+        const title = document.getElementById('bookTitle').value.trim();
+        const author = document.getElementById('bookAuthor').value.trim();
+        const findBtn = document.getElementById('findCoverBtn');
+        const coverInput = document.getElementById('bookCoverUrl');
+        
+        if (!title || !author) {
+            this.showNotification('Please enter title and author first.', 'error');
+            return;
+        }
+        
+        // Disable button and show loading state
+        findBtn.disabled = true;
+        findBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Searching...';
+        
+        try {
+            const coverUrls = await this.fetchBookCover(title, author);
+            if (coverUrls) {
+                coverInput.value = coverUrls.medium;
+                this.showNotification('Cover found!', 'success');
+            } else {
+                this.showNotification('No cover found for this book.', 'warning');
+            }
+        } catch (error) {
+            this.showNotification('Error searching for cover.', 'error');
+        } finally {
+            // Re-enable button
+            findBtn.disabled = false;
+            findBtn.innerHTML = '<i class="fas fa-search"></i> Find Cover';
+        }
+    }
+
+    async handleBookSubmit(e) {
         e.preventDefault();
         const formData = new FormData(e.target);
         const bookData = Object.fromEntries(formData.entries());
@@ -539,9 +699,9 @@ class ReadingListApp {
         }
         
         if (this.editingBookId) {
-            this.updateBook(this.editingBookId, bookData);
+            await this.updateBook(this.editingBookId, bookData);
         } else {
-            this.addBook(bookData);
+            await this.addBook(bookData);
         }
     }
 

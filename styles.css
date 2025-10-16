@@ -481,6 +481,14 @@ textarea:focus {
     font-size: 0.9rem;
 }
 
+.calendar-header {
+    text-align: center;
+    margin-bottom: var(--spacing-md);
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
 .streak-calendar {
     display: grid;
     grid-template-columns: repeat(7, 1fr);

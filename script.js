@@ -904,17 +904,31 @@ class ReadingListApp {
 
     renderStreakCalendar() {
         const calendar = document.getElementById('streakCalendar');
+        const monthYearContainer = document.getElementById('calendarMonthYear');
         const today = new Date();
         
-        // Get the last 35 days (5 weeks)
-        const days = [];
-        for (let i = 34; i >= 0; i--) {
-            const date = new Date(today);
-            date.setDate(date.getDate() - i);
-            days.push(date);
+        // Display current month and year
+        const currentMonth = today.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+        monthYearContainer.textContent = currentMonth;
+        
+        // Create a simple calendar for the current month
+        const year = today.getFullYear();
+        const month = today.getMonth();
+        const firstDay = new Date(year, month, 1);
+        const lastDay = new Date(year, month + 1, 0);
+        const daysInMonth = lastDay.getDate();
+        const startingDayOfWeek = firstDay.getDay();
+        
+        let calendarHTML = '';
+        
+        // Add empty cells for days before the first day of the month
+        for (let i = 0; i < startingDayOfWeek; i++) {
+            calendarHTML += '<div class="calendar-day empty"></div>';
         }
         
-        calendar.innerHTML = days.map(date => {
+        // Add all days of the month
+        for (let day = 1; day <= daysInMonth; day++) {
+            const date = new Date(year, month, day);
             const dateString = date.toDateString();
             const isToday = dateString === today.toDateString();
             const hasRead = this.streakData.readingDays.includes(dateString);
@@ -923,12 +937,14 @@ class ReadingListApp {
             if (hasRead) className += ' read';
             if (isToday) className += ' today';
             
-            return `
+            calendarHTML += `
                 <div class="${className}" title="${date.toLocaleDateString()}">
-                    ${date.getDate()}
+                    ${day}
                 </div>
             `;
-        }).join('');
+        }
+        
+        calendar.innerHTML = calendarHTML;
     }
 
     showAddBookModal() {

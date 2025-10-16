@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Reading List - ADHD Friendly</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1 class="app-title">
+                    <i class="fas fa-book-open"></i>
+                    My Reading List
+                </h1>
+                <div class="header-actions">
+                    <div class="theme-switcher">
+                        <button class="theme-btn" id="themeBtn" title="Change Theme">
+                            <i class="fas fa-palette"></i>
+                        </button>
+                        <div class="theme-dropdown" id="themeDropdown">
+                            <div class="theme-option" data-theme="vibrant">
+                                <div class="theme-preview vibrant"></div>
+                                <span>Vibrant</span>
+                            </div>
+                            <div class="theme-option" data-theme="ocean">
+                                <div class="theme-preview ocean"></div>
+                                <span>Ocean</span>
+                            </div>
+                            <div class="theme-option" data-theme="sunset">
+                                <div class="theme-preview sunset"></div>
+                                <span>Sunset</span>
+                            </div>
+                            <div class="theme-option" data-theme="forest">
+                                <div class="theme-preview forest"></div>
+                                <span>Forest</span>
+                            </div>
+                            <div class="theme-option" data-theme="cosmic">
+                                <div class="theme-preview cosmic"></div>
+                                <span>Cosmic</span>
+                            </div>
+                            <div class="theme-option" data-theme="aurora">
+                                <div class="theme-preview aurora"></div>
+                                <span>Aurora</span>
+                            </div>
+                            <div class="theme-option" data-theme="fire">
+                                <div class="theme-preview fire"></div>
+                                <span>Fire</span>
+                            </div>
+                            <div class="theme-option" data-theme="ice">
+                                <div class="theme-preview ice"></div>
+                                <span>Ice</span>
+                            </div>
+                            <div class="theme-option" data-theme="monochrome">
+                                <div class="theme-preview monochrome"></div>
+                                <span>Monochrome</span>
+                            </div>
+                        </div>
+                    </div>
+                    <button class="focus-mode-btn" id="focusModeBtn" title="Toggle Focus Mode">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                    <button class="add-book-btn" id="addBookBtn">
+                        <i class="fas fa-plus"></i>
+                        Add Book
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Stats Section -->
+            <section class="stats-section">
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-book"></i>
+                    </div>
+                    <div class="stat-info">
+                        <span class="stat-number" id="totalBooks">0</span>
+                        <span class="stat-label">Total Books</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-clock"></i>
+                    </div>
+                    <div class="stat-info">
+                        <span class="stat-number" id="inProgressBooks">0</span>
+                        <span class="stat-label">In Progress</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                    <div class="stat-info">
+                        <span class="stat-number" id="completedBooks">0</span>
+                        <span class="stat-label">Completed</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Filter and Sort Controls -->
+            <section class="controls-section">
+                <div class="filter-controls">
+                    <select id="statusFilter" class="filter-select">
+                        <option value="all">All Books</option>
+                        <option value="to-read">To Read</option>
+                        <option value="reading">Currently Reading</option>
+                        <option value="completed">Completed</option>
+                    </select>
+                    <select id="pageFilter" class="filter-select">
+                        <option value="all">Any Length</option>
+                        <option value="short">Short (1-200 pages)</option>
+                        <option value="medium">Medium (201-400 pages)</option>
+                        <option value="long">Long (401+ pages)</option>
+                    </select>
+                    <select id="sortBy" class="filter-select">
+                        <option value="title">Sort by Title</option>
+                        <option value="author">Sort by Author</option>
+                        <option value="date-added">Sort by Date Added</option>
+                        <option value="priority">Sort by Priority</option>
+                        <option value="pages">Sort by Pages</option>
+                    </select>
+                </div>
+                <div class="view-controls">
+                    <button class="view-btn active" id="gridViewBtn" title="Grid View">
+                        <i class="fas fa-th"></i>
+                    </button>
+                    <button class="view-btn" id="listViewBtn" title="List View">
+                        <i class="fas fa-list"></i>
+                    </button>
+                </div>
+            </section>
+
+            <!-- Books Grid/List -->
+            <section class="books-section">
+                <div class="books-container" id="booksContainer">
+                    <!-- Books will be dynamically inserted here -->
+                </div>
+                <div class="empty-state" id="emptyState" style="display: none;">
+                    <div class="empty-icon">
+                        <i class="fas fa-book-open"></i>
+                    </div>
+                    <h3>No books yet</h3>
+                    <p>Start building your reading list by adding your first book!</p>
+                    <button class="add-first-book-btn" id="addFirstBookBtn">
+                        <i class="fas fa-plus"></i>
+                        Add Your First Book
+                    </button>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Add/Edit Book Modal -->
+    <div class="modal-overlay" id="bookModalOverlay">
+        <div class="modal" id="bookModal">
+            <div class="modal-header">
+                <h2 id="modalTitle">Add New Book</h2>
+                <button class="modal-close" id="modalClose">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form class="book-form" id="bookForm">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="bookTitle">Title *</label>
+                        <input type="text" id="bookTitle" name="title" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="bookAuthor">Author *</label>
+                        <input type="text" id="bookAuthor" name="author" required>
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="bookGenre">Genre</label>
+                        <select id="bookGenre" name="genre">
+                            <option value="">Select Genre</option>
+                            <option value="Fiction">Fiction</option>
+                            <option value="Non-Fiction">Non-Fiction</option>
+                            <option value="Mystery">Mystery</option>
+                            <option value="Romance">Romance</option>
+                            <option value="Sci-Fi">Sci-Fi</option>
+                            <option value="Fantasy">Fantasy</option>
+                            <option value="Biography">Biography</option>
+                            <option value="Self-Help">Self-Help</option>
+                            <option value="History">History</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="bookPages">Pages</label>
+                        <input type="number" id="bookPages" name="pages" min="1">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="bookStatus">Status</label>
+                        <select id="bookStatus" name="status">
+                            <option value="to-read">To Read</option>
+                            <option value="reading">Currently Reading</option>
+                            <option value="completed">Completed</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="bookPriority">Priority</label>
+                        <select id="bookPriority" name="priority">
+                            <option value="low">Low</option>
+                            <option value="medium">Medium</option>
+                            <option value="high">High</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="bookNotes">Notes</label>
+                    <textarea id="bookNotes" name="notes" rows="3" placeholder="Any thoughts about this book..."></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="bookCoverUrl">Cover Image URL</label>
+                    <input type="url" id="bookCoverUrl" name="coverUrl" placeholder="https://example.com/book-cover.jpg">
+                    <small>Leave empty to use a placeholder cover</small>
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary" id="modalCancel">Cancel</button>
+                    <button type="submit" class="btn-primary">
+                        <i class="fas fa-save"></i>
+                        Save Book
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Progress Modal -->
+    <div class="modal-overlay" id="progressModalOverlay">
+        <div class="modal" id="progressModal">
+            <div class="modal-header">
+                <h2>Update Progress</h2>
+                <button class="modal-close" id="progressModalClose">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form class="progress-form" id="progressForm">
+                <div class="form-group">
+                    <label for="currentPage">Current Page</label>
+                    <input type="number" id="currentPage" name="currentPage" min="0" required>
+                </div>
+                <div class="form-group">
+                    <label for="progressNotes">Progress Notes</label>
+                    <textarea id="progressNotes" name="progressNotes" rows="3" placeholder="How's it going?"></textarea>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary" id="progressModalCancel">Cancel</button>
+                    <button type="submit" class="btn-primary">
+                        <i class="fas fa-save"></i>
+                        Update Progress
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
